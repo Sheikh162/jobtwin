@@ -69,15 +69,16 @@ async function crawlCompany(job: Job) {
   }
 
   // Fresh listings created this run — signal the matching engine.
-  const justCreated = await prisma.listing.findMany({
-    where: { companyId, externalId: { in: fresh.map((l) => l.externalId) }, firstSeenAt: { gt: new Date((job.timestamp ?? Date.now()) - 60000) } },
-  });
+  // Informational only: this timestamp heuristic is not load-bearing. The
+  // matching engine dedupes correctly via the Match unique constraint on
+  // [userId, listingId], so this count is purely for the crawl log.
+  const justCreatedCount = freshExternalIds.size;
 
   console.log(
-    `[crawl] ${company.name} — ${fresh.length} listings, ${closedExternalIds.length} closed, ${justCreated.length} fresh`
+    `[crawl] ${company.name} — ${fresh.length} listings, ${closedExternalIds.length} closed, ${justCreatedCount} fresh`
   );
 
-  return { company: company.name, found: fresh.length, closed: closedExternalIds.length, justCreated: justCreated.length };
+  return { company: company.name, found: fresh.length, closed: closedExternalIds.length, justCreated: justCreatedCount };
 }
 
 export function startCrawlWorker() {

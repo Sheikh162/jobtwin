@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { MatchStatus } from "@/generated/prisma/enums";
 import { llmText } from "@/lib/llm";
+import { notifyUser } from "@/lib/notifications";
 
 /**
  * Score a listing against a user's saved criteria.
@@ -10,15 +11,18 @@ import { llmText } from "@/lib/llm";
 export function scoreListing(
   listing: { title: string; location?: string | null; description?: string | null },
   criteria: { keywords: string[]; locations: string[]; remoteOnly: boolean }
-): { score: number; reasons: string[] } {
+): { score: number; reasons: string[]; matchedKeyword: boolean; locationMatched: boolean } {
   let score = 0;
   const reasons: string[] = [];
+  let matchedKeyword = false;
+  let locationMatched = false;
   const haystack = `${listing.title} ${listing.description ?? ""}`.toLowerCase();
 
   for (const kw of criteria.keywords) {
     if (haystack.includes(kw.toLowerCase())) {
       score += 10;
       reasons.push(`matches keyword "${kw}"`);
+      matchedKeyword = true;
     }
   }
 
@@ -27,24 +31,28 @@ export function scoreListing(
     if (loc.includes("remote")) {
       score += 25;
       reasons.push("remote role");
+      locationMatched = true;
     } else if (Array.isArray(criteria.locations) && criteria.locations.some((l) => loc.includes(l.toLowerCase()))) {
       score += 15;
       reasons.push("matches location while remote-only preferred");
+      locationMatched = true;
     }
   } else if (criteria.locations?.length) {
     if (loc.includes("remote")) {
       score += 15;
       reasons.push("remote");
+      locationMatched = true;
     }
     for (const l of criteria.locations) {
       if (loc.includes(l.toLowerCase())) {
         score += 25;
         reasons.push(`location matches "${l}"`);
+        locationMatched = true;
       }
     }
   }
 
-  return { score, reasons };
+  return { score, reasons, matchedKeyword, locationMatched };
 }
 
 async function draftReason(
@@ -70,7 +78,7 @@ async function draftReason(
 export async function runMatchingEngine() {
   const criteriaList = await prisma.searchCriteria.findMany({
     where: { active: true },
-    include: { user: { include: { channels: true } } },
+    include: { user: { select: { id: true, channels: { where: { enabled: true } } } } },
   });
 
   if (criteriaList.length === 0) {
@@ -97,8 +105,12 @@ export async function runMatchingEngine() {
     for (const listing of listings) {
       if (existingIds.has(listing.id)) continue;
 
-      const { score, reasons } = scoreListing(listing, criteria);
-      if (score < 10) continue;
+      const { score, reasons, matchedKeyword, locationMatched } = scoreListing(listing, criteria);
+      // Keep the queue curated: a single loose keyword hit isn't enough. Require
+      // at least one keyword and (a location/remote match OR >= 2 keyword hits).
+      const keywordHitCount = reasons.filter((r) => r.startsWith("matches keyword")).length;
+      const pass = matchedKeyword && (locationMatched || keywordHitCount >= 2);
+      if (!pass) continue;
 
       const rationale = await draftReason(
         {
@@ -119,6 +131,24 @@ export async function runMatchingEngine() {
           status: MatchStatus.PENDING,
         },
       });
+
+      // The moment a match exists, ping the user — speed is the whole reason
+      // notifications are real-time and not batched. A failed send must not
+      // fail the match, so notify is best-effort and notifiedAt records success.
+      try {
+        await notifyUser(criteria.userId, {
+          title: `New match: ${listing.title}`,
+          body: `${listing.company.name} — swipe right to apply before early-applicant windows close.`,
+          url: appQueueUrl(),
+        });
+        await prisma.match.update({
+          where: { userId_listingId: { userId: criteria.userId, listingId: listing.id } },
+          data: { notifiedAt: new Date() },
+        });
+      } catch (err) {
+        console.warn(`[match] notify failed for ${listing.title}:`, (err as Error).message);
+      }
+
       created += 1;
       existingIds.add(listing.id);
     }
@@ -126,6 +156,12 @@ export async function runMatchingEngine() {
 
   console.log(`[match] created ${created} new match(es)`);
   return created;
+}
+
+/** Link into the swipe review queue (root route) for notification messages. */
+function appQueueUrl(): string {
+  const base = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  return `${base}/`;
 }
 
 export { MatchStatus };

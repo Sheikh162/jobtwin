@@ -6,7 +6,7 @@ import { MatchStatus } from "@/generated/prisma/enums";
  * This is a queue of pre-vetted matches — not an infinite discovery feed.
  */
 export async function getMatchQueue(userId: string, limit = 20) {
-  return prisma.match.findMany({
+  const matches = await prisma.match.findMany({
     where: { userId, status: MatchStatus.PENDING },
     orderBy: { createdAt: "desc" },
     take: limit,
@@ -19,6 +19,25 @@ export async function getMatchQueue(userId: string, limit = 20) {
       criteria: { select: { name: true } },
     },
   });
+
+  // Join transparency stats at decision time: for each listing's (companyId,
+  // role) pair, pull the computed stats if they exist. When there's no data,
+  // the card simply renders nothing (never a fabricated placeholder).
+  const keys = matches.map((m) => ({
+    companyId: m.listing.companyId,
+    role: m.listing.title,
+  }));
+  const stats = await prisma.transparencyStats.findMany({
+    where: {
+      OR: keys.map((k) => ({ companyId: k.companyId, role: k.role })),
+    },
+  });
+  const statByKey = new Map(stats.map((s) => [`${s.companyId}::${s.role}`, s]));
+
+  return matches.map((m) => ({
+    ...m,
+    transparency: statByKey.get(`${m.listing.companyId}::${m.listing.title}`) ?? null,
+  }));
 }
 
 export async function getPendingCount(userId: string) {

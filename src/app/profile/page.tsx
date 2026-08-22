@@ -4,10 +4,13 @@ import { prisma } from "@/lib/prisma";
 import { AppShell } from "@/components/app-shell";
 import { ResumeUpload } from "@/components/resume-upload";
 import { TelegramConnect } from "@/components/telegram-connect";
+import { VerifyEmail } from "@/components/verify-email";
+import { ExtensionConnect } from "@/components/extension-connect";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { GithubIcon } from "@/components/github-icon";
 import { Check, X, Mail } from "lucide-react";
+import { DomainVerificationStatus } from "@/generated/prisma/enums";
 
 export default async function ProfilePage() {
   const session = await auth();
@@ -25,6 +28,17 @@ export default async function ProfilePage() {
 
   const githubAccount = user.accounts.find((a) => a.provider === "github");
   const telegram = user.channels.find((c) => c.type === "TELEGRAM");
+
+  const [companies, verifications, extensionTokens] = await Promise.all([
+    prisma.company.findMany({ select: { id: true, name: true, verificationStatus: true }, orderBy: { name: "asc" } }),
+    prisma.domainVerification.findMany({
+      where: { userId: user.id, status: DomainVerificationStatus.VERIFIED },
+      select: { companyId: true },
+    }),
+    prisma.extensionToken.count({
+      where: { userId: user.id, revoked: false, expiresAt: { gt: new Date() } },
+    }),
+  ]);
 
   return (
     <AppShell>
@@ -83,6 +97,13 @@ export default async function ProfilePage() {
           connected={!!telegram}
           telegramUsername={telegram?.externalId ?? undefined}
         />
+
+        <VerifyEmail
+          companies={companies}
+          verifiedCompanyIds={verifications.map((v) => v.companyId)}
+        />
+
+        <ExtensionConnect activeTokens={extensionTokens} />
 
         {user.resumeParsed && (
           <Card>

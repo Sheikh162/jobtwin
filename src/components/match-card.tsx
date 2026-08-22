@@ -24,6 +24,12 @@ interface Props {
       company: { name: string; logoUrl: string | null; verificationStatus: string };
     };
     criteria: { name: string } | null;
+    transparency: {
+      responseRate: number | null;
+      avgTimeToResponse: number | null;
+      ghostingRate: number | null;
+      sampleSize: number;
+    } | null;
   };
   isLast?: boolean;
   onDecided?: () => void;
@@ -93,6 +99,35 @@ export function MatchCard({ match, onDecided, isLast }: Props) {
         </div>
 
         <ProvenanceBadge source={match.listing.source} />
+
+        {match.transparency && match.transparency.sampleSize > 0 && (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+            <span className="font-medium text-foreground/80">
+              {match.transparency.responseRate != null
+                ? `${Math.round(match.transparency.responseRate)}% respond`
+                : "Response unknown"}
+              <span className="ml-1 font-normal text-muted-foreground">
+                · {match.transparency.sampleSize} applicant{match.transparency.sampleSize > 1 ? "s" : ""}
+              </span>
+            </span>
+            {match.transparency.avgTimeToResponse != null && (
+              <span>~{match.transparency.avgTimeToResponse}d reply</span>
+            )}
+            {match.transparency.ghostingRate != null && (
+              <span
+                className={
+                  match.transparency.ghostingRate > 50
+                    ? "text-destructive"
+                    : match.transparency.ghostingRate > 0
+                      ? "text-amber-600"
+                      : "text-emerald-600"
+                }
+              >
+                {Math.round(match.transparency.ghostingRate)}% ghost
+              </span>
+            )}
+          </div>
+        )}
 
         {reasons.rationale && (
           <p className="border-l-2 border-primary/30 pl-3 text-sm text-foreground/90">{reasons.rationale}</p>

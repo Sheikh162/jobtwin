@@ -9,35 +9,16 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { postJobListing } from "@/lib/actions";
-import { Loader2, ShieldCheck, ShieldQuestion } from "lucide-react";
+import { Loader2, ShieldCheck, ShieldQuestion, ShieldAlert } from "lucide-react";
+import Link from "next/link";
 
-const provenanceOptions = [
-  {
-    value: "EMPLOYEE_POSTED",
-    label: "Posted by verified employee",
-    chip: "domain-verified",
-    icon: ShieldCheck,
-    hint: "Highest trust — identity confirmed via work email.",
-  },
-  {
-    value: "EMPLOYER_SUBMITTED_VERIFIED",
-    label: "Employer-submitted · presence confirmed",
-    chip: "agent-confirmed",
-    icon: ShieldQuestion,
-    hint: "Self-reported, but the agent corroborated the company is real.",
-  },
-  {
-    value: "EMPLOYER_SUBMITTED_UNVERIFIED",
-    label: "Employer-submitted · unverified",
-    chip: "unverified",
-    icon: ShieldQuestion,
-    hint: "Lowest tier — clearly flagged on the listing.",
-  },
-] as const;
-
-type Provenance = (typeof provenanceOptions)[number]["value"];
-
-export function PostJobForm({ companies }: { companies: { id: string; name: string }[] }) {
+export function PostJobForm({
+  companies,
+  verificationStatus,
+}: {
+  companies: { id: string; name: string }[];
+  verificationStatus: "DOMAIN_VERIFIED" | "PRESENCE_CONFIRMED" | "UNVERIFIED";
+}) {
   const router = useRouter();
   const [title, setTitle] = useState("");
   const [location, setLocation] = useState("");
@@ -45,7 +26,6 @@ export function PostJobForm({ companies }: { companies: { id: string; name: stri
   const [description, setDescription] = useState("");
   const [companyId, setCompanyId] = useState(companies[0]?.id ?? "");
   const [companyName, setCompanyName] = useState("");
-  const [provenance, setProvenance] = useState<Provenance>("EMPLOYER_SUBMITTED_VERIFIED");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -62,7 +42,6 @@ export function PostJobForm({ companies }: { companies: { id: string; name: stri
         description: description || null,
         companyId: companyId || null,
         companyName: companyName || null,
-        source: provenance,
       });
       router.push("/");
       router.refresh();
@@ -73,16 +52,31 @@ export function PostJobForm({ companies }: { companies: { id: string; name: stri
     }
   }
 
+  const trust = verificationMeta(verificationStatus);
+
   return (
     <form onSubmit={onSubmit}>
       <Card>
         <CardHeader>
           <CardTitle className="font-display text-lg tracking-tight">Post a job</CardTitle>
           <CardDescription>
-            Every listing carries its provenance label — trust is earned, not assumed.
+            Your listing&apos;s provenance label is set server-side from a real check — you can&apos;t self-declare it.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-5">
+          <div className="rounded-xl border bg-secondary/20 px-4 py-3 text-sm">
+            <p className="flex flex-wrap items-center gap-2 font-medium">
+              <trust.icon className="h-4 w-4" />
+              Your posting trust level: {trust.label}
+              {verificationStatus !== "DOMAIN_VERIFIED" && (
+                <Badge variant="outline" className="rounded-md text-[0.6rem] font-normal normal-case">
+                  {trust.chip}
+                </Badge>
+              )}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">{trust.hint}</p>
+          </div>
+
           <div className="space-y-1.5">
             <Label htmlFor="title">Job title *</Label>
             <Input
@@ -150,47 +144,42 @@ export function PostJobForm({ companies }: { companies: { id: string; name: stri
               />
             )}
           </div>
-
-          <div className="space-y-2">
-            <Label>Provenance label</Label>
-            <div className="space-y-2">
-              {provenanceOptions.map((opt) => (
-                <label
-                  key={opt.value}
-                  className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition-colors ${
-                    provenance === opt.value ? "border-primary bg-secondary/40" : "hover:bg-secondary/25"
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="provenance"
-                    value={opt.value}
-                    checked={provenance === opt.value}
-                    onChange={() => setProvenance(opt.value)}
-                    className="mt-1 h-4 w-4 accent-foreground"
-                  />
-                  <div>
-                    <p className="flex flex-wrap items-center gap-2 text-sm font-medium">
-                      <opt.icon className="h-4 w-4 text-muted-foreground" />
-                      {opt.label}
-                      <Badge variant="outline" className="rounded-md text-[0.6rem] font-normal normal-case">
-                        {opt.chip}
-                      </Badge>
-                    </p>
-                    <p className="mt-0.5 text-xs text-muted-foreground">{opt.hint}</p>
-                  </div>
-                </label>
-              ))}
-            </div>
-          </div>
         </CardContent>
-        <CardFooter>
-          <Button type="submit" disabled={loading} className="w-full gap-2">
+        <CardFooter className="flex gap-2">
+          <Button type="submit" disabled={loading} className="flex-1 gap-2">
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Publish listing"}
+          </Button>
+          <Button asChild variant="outline" disabled={verificationStatus === "DOMAIN_VERIFIED"}>
+            <Link href="/profile">Verify work email</Link>
           </Button>
         </CardFooter>
       </Card>
       {error && <p className="mt-3 text-sm text-destructive">{error}</p>}
     </form>
   );
+}
+
+function verificationMeta(status: "DOMAIN_VERIFIED" | "PRESENCE_CONFIRMED" | "UNVERIFIED") {
+  if (status === "DOMAIN_VERIFIED") {
+    return {
+      icon: ShieldCheck,
+      label: "Domain verified",
+      chip: "domain-verified",
+      hint: "Verified via work email — your postings carry the highest provenance label.",
+    };
+  }
+  if (status === "PRESENCE_CONFIRMED") {
+    return {
+      icon: ShieldQuestion,
+      label: "Presence confirmed",
+      chip: "agent-confirmed",
+      hint: "The agent confirmed the company is real. Verify a work email to post as a verified employee.",
+    };
+  }
+  return {
+    icon: ShieldAlert,
+    label: "Unverified",
+    chip: "unverified",
+    hint: "Your listings will be clearly flagged as employer-submitted, unverified until you verify a work email.",
+  };
 }

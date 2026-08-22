@@ -102,6 +102,9 @@ model User {
   posts          CommunityPost[]
   reports        InterviewReport[]
   channels       NotificationChannel[]
+  domainVerifications DomainVerification[]
+  extensionTokens     ExtensionToken[]
+  referrerProfiles    ReferrerProfile[]
 
   accounts Account[]
   sessions Session[]
@@ -163,6 +166,8 @@ model Company {
   posts        CommunityPost[]
   reports      InterviewReport[]
   stats        TransparencyStats[]
+  domainVerifications DomainVerification[]
+  referrerProfiles     ReferrerProfile[]
   seedActive   Boolean  @default(false)
   lastCrawlAt  DateTime?
   createdAt    DateTime @default(now())
@@ -282,6 +287,26 @@ model Referral {
   @@index([referrerId])
 }
 
+// A verified employee opts in as a referrer, optionally scoped to teams/roles.
+model ReferrerProfile {
+  id        String @id @default(cuid())
+  userId    String
+  user      User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  // Optional scope: referral the user is willing to give within these teams/roles.
+  teams String[] @default([])
+  roles String[] @default([])
+  note  String?
+
+  active    Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, companyId])
+}
+
 // ---------------------------------------------------------------------------
 // Community
 // ---------------------------------------------------------------------------
@@ -360,4 +385,52 @@ model NotificationChannel {
   updatedAt  DateTime @updatedAt
 
   @@unique([userId, type, externalId])
+}
+
+// ---------------------------------------------------------------------------
+// Verification: domain-email ownership proof
+// ---------------------------------------------------------------------------
+
+enum DomainVerificationStatus {
+  PENDING
+  VERIFIED
+  EXPIRED
+}
+
+model DomainVerification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  // The claimed company email (e.g. person@linear.app). The domain after @ is
+  // the proof target; the code sends to this address and requires a click that
+  // only a mailbox at that domain could receive.
+  email   String
+  domain  String   // normalized lowercase domain, e.g. "linear.app"
+  token   String   @unique // one-time signed verification token
+  status  DomainVerificationStatus @default(PENDING)
+  usedAt  DateTime?
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+
+  @@unique([userId, companyId])
+  @@index([domain])
+}
+
+// ---------------------------------------------------------------------------
+// Extension auth tokens
+// ---------------------------------------------------------------------------
+
+model ExtensionToken {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  name      String   @default("browser")
+  revoked   Boolean  @default(false)
+  lastUsedAt DateTime?
+  createdAt DateTime @default(now())
+  expiresAt DateTime
 }

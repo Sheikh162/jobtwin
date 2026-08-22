@@ -45,6 +45,30 @@
         font-size: 11px;
         margin-top: 8px;
       }
+      .settings {
+        margin-top: 12px;
+        padding-top: 12px;
+        border-top: 1px solid rgba(0, 0, 0, 0.08);
+      }
+      .settings label {
+        display: block;
+        font-size: 11px;
+        color: #666;
+        margin: 8px 0 4px;
+      }
+      .settings input {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 7px 9px;
+        border: 1px solid rgba(0, 0, 0, 0.15);
+        border-radius: 6px;
+        font-size: 12px;
+      }
+      .settings button {
+        margin-top: 10px;
+        padding: 7px 12px;
+        font-size: 12px;
+      }
     </style>
   </head>
   <body>
@@ -52,6 +76,16 @@
     <p id="status">Open a Greenhouse or Lever application to autofill your saved profile.</p>
     <button id="fill">Fill current form</button>
     <div id="result" class="status"></div>
+
+    <div class="settings">
+      <label for="apiUrl">API URL</label>
+      <input id="apiUrl" placeholder="https://your-deployment.com" />
+      <label for="token">API token</label>
+      <input id="token" placeholder="jtx_... (from Jobtwin profile)" />
+      <button id="save">Save & sync</button>
+      <div id="save-status" class="status"></div>
+    </div>
+
     <script src="popup.js"></script>
   </body>
 </html>
