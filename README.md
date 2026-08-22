@@ -84,6 +84,10 @@ src/lib/           prisma client, llm provider, notifications, resume parsing,
 extension/         WebExtension (Manifest V3) Greenhouse/Lever autofill, builds to .js via its own tsc
 ```
 
+### Architecture diagram
+
+A Mermaid architecture diagram of the current system lives at [`docs/architecture.mmd`](docs/architecture.mmd) — it maps the client pages, server actions, the agent worker, the data layer, and external sources (careers pages, Telegram, OpenRouter, GitHub OAuth). Render it with any Mermaid viewer (GitHub renders `.mmd` natively, or `npx @mermaid-js/mermaid-cli -i docs/architecture.mmd -o architecture.png`).
+
 ## Env vars
 
 See `.env.example` — the only secrets you must supply are `OPENROUTER_API_KEY`, `AUTH_GITHUB_ID/SECRET`, and `TELEGRAM_BOT_TOKEN`. Generate `AUTH_SECRET` with `npx auth secret`.
