@@ -4,6 +4,49 @@ import { llmText } from "@/lib/llm";
 import { notifyUser } from "@/lib/notifications";
 
 /**
+ * Country/city aliasing for location matching. A search for "India" should
+ * surface roles in Bengaluru/Hyderabad/Mumbai/etc., not only listings whose
+ * location string literally contains "India". Small curated set — extendable.
+ */
+const COUNTRY_CITY_ALIASES: Record<string, string[]> = {
+  india: ["india", "bengaluru", "bangalore", "hyderabad", "mumbai", "delhi", "noida", "gurgaon", "gurugram", "chennai", "pune", "kolkata", "ahmedabad"],
+  "united states": ["united states", "usa", "us", "new york", "san francisco", "sf", "seattle", "austin", "remote - united states"],
+  "united kingdom": ["united kingdom", "uk", "london", "england"],
+  canada: ["canada", "toronto", "vancouver", "montreal"],
+  germany: ["germany", "berlin", "munich", "hamburg"],
+  france: ["france", "paris"],
+  netherlands: ["netherlands", "amsterdam", "holland"],
+  singapore: ["singapore"],
+  australia: ["australia", "sydney", "melbourne"],
+};
+
+/** Does the listing location match a criteria location? Country-aware. */
+export function locationMatches(
+  listingLocation: string | null | undefined,
+  criteriaLocation: string
+): boolean {
+  const loc = (listingLocation ?? "").toLowerCase();
+  const want = criteriaLocation.toLowerCase().trim();
+  if (!loc || !want) return false;
+
+  // Direct substring: "Mumbai, India" vs "India", "Bengaluru" vs "bengaluru".
+  if (loc.includes(want)) return true;
+  if (loc.includes("remote") && want.includes("remote")) return true;
+
+  // Country alias: criteria "India" + listing contains any Indian city.
+  for (const [country, cities] of Object.entries(COUNTRY_CITY_ALIASES)) {
+    if (want.includes(country) || country.includes(want)) {
+      return cities.some((c) => loc.includes(c));
+    }
+    if (cities.includes(want)) {
+      // Criteria is a city in this country — check the country name too.
+      return loc.includes(country) || loc.includes(want);
+    }
+  }
+  return false;
+}
+
+/**
  * Score a listing against a user's saved criteria.
  * Deterministic shape-based scoring on title/location/role keywords; the LLM
  * adds a human-readable reason string used on the swipe card.
@@ -11,12 +54,14 @@ import { notifyUser } from "@/lib/notifications";
 export function scoreListing(
   listing: { title: string; location?: string | null; description?: string | null },
   criteria: { keywords: string[]; locations: string[]; remoteOnly: boolean }
-): { score: number; reasons: string[]; matchedKeyword: boolean; locationMatched: boolean } {
+): { score: number; reasons: string[]; matchedKeyword: boolean; locationMatched: boolean; isRemote: boolean } {
   let score = 0;
   const reasons: string[] = [];
   let matchedKeyword = false;
   let locationMatched = false;
   const haystack = `${listing.title} ${listing.description ?? ""}`.toLowerCase();
+  const loc = (listing.location ?? "").toLowerCase();
+  const isRemote = loc.includes("remote");
 
   for (const kw of criteria.keywords) {
     if (haystack.includes(kw.toLowerCase())) {
@@ -26,25 +71,24 @@ export function scoreListing(
     }
   }
 
-  const loc = (listing.location ?? "").toLowerCase();
   if (criteria.remoteOnly) {
-    if (loc.includes("remote")) {
+    if (isRemote) {
       score += 25;
       reasons.push("remote role");
       locationMatched = true;
-    } else if (Array.isArray(criteria.locations) && criteria.locations.some((l) => loc.includes(l.toLowerCase()))) {
+    } else if (Array.isArray(criteria.locations) && criteria.locations.some((l) => locationMatches(loc, l))) {
       score += 15;
       reasons.push("matches location while remote-only preferred");
       locationMatched = true;
     }
   } else if (criteria.locations?.length) {
-    if (loc.includes("remote")) {
+    if (isRemote) {
       score += 15;
       reasons.push("remote");
       locationMatched = true;
     }
     for (const l of criteria.locations) {
-      if (loc.includes(l.toLowerCase())) {
+      if (locationMatches(loc, l)) {
         score += 25;
         reasons.push(`location matches "${l}"`);
         locationMatched = true;
@@ -52,7 +96,7 @@ export function scoreListing(
     }
   }
 
-  return { score, reasons, matchedKeyword, locationMatched };
+  return { score, reasons, matchedKeyword, locationMatched, isRemote };
 }
 
 /**
@@ -65,6 +109,11 @@ export function scoreListing(
  * AND clears the score floor (default 20; a single 10pt keyword hit alone is
  * never enough).
  *
+ * Location intent: when the user saved specific locations (and is not
+ * remoteOnly), a NON-remote listing must match one of those locations to enter
+ * the queue — saving "India" means India, not "Remote - United States". Remote
+ * listings stay eligible (they're location-flexible).
+ *
  * Returns the reasons string array (needed downstream) or null if rejected.
  */
 export function curatedMatchCheck(
@@ -72,9 +121,15 @@ export function curatedMatchCheck(
   criteria: { keywords: string[]; locations: string[]; remoteOnly: boolean },
   options?: { scoreFloor?: number }
 ): { score: number; reasons: string[] } | null {
-  const { score, reasons, matchedKeyword, locationMatched } = scoreListing(listing, criteria);
+  const { score, reasons, matchedKeyword, locationMatched, isRemote } = scoreListing(listing, criteria);
   const keywordHitCount = reasons.filter((r) => r.startsWith("matches keyword")).length;
   const floor = options?.scoreFloor ?? 20;
+
+  // Location required: explicit locations + not remote-only => any non-remote
+  // listing must match a saved location. Remote listings are exempt.
+  const hasLocationIntent = !criteria.remoteOnly && criteria.locations.length > 0;
+  const locationSatisfied = isRemote || locationMatched;
+  if (hasLocationIntent && !locationSatisfied) return null;
 
   const passes =
     matchedKeyword &&

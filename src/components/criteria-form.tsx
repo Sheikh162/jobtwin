@@ -47,10 +47,19 @@ export function CriteriaForm({
     setLoading(true);
     setError(null);
     try {
+      // Register anything still sitting in the inputs (typing + Save directly
+      // used to silently drop it — the cause of "India not saved").
+      const finalKeywords = keyword.trim() && !keywords.includes(keyword.trim())
+        ? [...keywords, keyword.trim()]
+        : keywords;
+      const finalLocations = location.trim() && !locations.includes(location.trim())
+        ? [...locations, location.trim()]
+        : locations;
+
       await saveCriteria({
         name,
-        keywords,
-        locations,
+        keywords: finalKeywords,
+        locations: finalLocations,
         remoteOnly,
         minSalary: minSalary ? Number(minSalary) : null,
       });

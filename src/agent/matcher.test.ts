@@ -81,12 +81,61 @@ describe("curatedMatchCheck", () => {
     expect(result?.score).toBeGreaterThanOrEqual(25);
   });
 
-  it("passes two keyword hits even without location", () => {
+  it("rejects two keyword hits in a non-matching non-remote location (location intent)", () => {
     const result = curatedMatchCheck(
       { title: "Senior Backend Product Engineer, TypeScript", location: "Berlin" },
       baseCriteria
     );
+    // Locations ["San Francisco","Remote"] + not remote-only => Berlin must not pass.
+    expect(result).toBeNull();
+  });
+
+  it("passes two keyword hits when the listing is remote", () => {
+    const result = curatedMatchCheck(
+      { title: "Senior Backend Product Engineer, TypeScript", location: "Remote" },
+      baseCriteria
+    );
     expect(result).not.toBeNull();
+  });
+
+  it("matches India country intent against Indian cities", () => {
+    const indiaCriteria = {
+      keywords: ["backend", "typescript", "fullstack"],
+      locations: ["India"],
+      remoteOnly: false,
+    };
+    const result = curatedMatchCheck(
+      { title: "Backend Engineer", location: "Hyderabad, India" },
+      indiaCriteria
+    );
+    expect(result).not.toBeNull();
+    expect(result?.reasons.some((r) => r.includes("India"))).toBe(true);
+  });
+
+  it("rejects a US role when India is the saved location", () => {
+    const indiaCriteria = {
+      keywords: ["backend", "typescript", "fullstack"],
+      locations: ["India"],
+      remoteOnly: false,
+    };
+    const result = curatedMatchCheck(
+      { title: "Backend Engineer", location: "Remote - United States" },
+      indiaCriteria
+    );
+    expect(result).not.toBeNull(); // remote listings are location-flexible
+  });
+
+  it("rejects a non-remote US role when India is the saved location", () => {
+    const indiaCriteria = {
+      keywords: ["backend", "typescript", "fullstack"],
+      locations: ["India"],
+      remoteOnly: false,
+    };
+    const result = curatedMatchCheck(
+      { title: "Backend Engineer", location: "New York, NY" },
+      indiaCriteria
+    );
+    expect(result).toBeNull();
   });
 
   it("respects a higher score floor", () => {
