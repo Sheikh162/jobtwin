@@ -7,6 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { optInAsReferrer, offerReferral, sendReferral } from "@/lib/actions";
 import { Loader2, ShieldCheck, Handshake, PenLine, Send, Check } from "lucide-react";
 
@@ -210,15 +217,20 @@ function ReferrerOptIn({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
-        <select value={companyId} onChange={(e) => setCompanyId(e.target.value)} className="h-9 w-full rounded-md border bg-transparent px-3 text-sm" aria-label="Company">
-          <option value="">Select a verified company</option>
-          {companies.filter((c) => verifiedSet.has(c.id)).map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-              {myReferrerCompanyIds.includes(c.id) ? " (opted in)" : ""}
-            </option>
-          ))}
-        </select>
+        <Select value={companyId} onValueChange={setCompanyId}>
+          <SelectTrigger className="h-9 w-full gap-1 rounded-md px-3 text-sm" aria-label="Company">
+            <SelectValue placeholder="Select a verified company" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="">Select a verified company</SelectItem>
+            {companies.filter((c) => verifiedSet.has(c.id)).map((c) => (
+              <SelectItem key={c.id} value={c.id}>
+                {c.name}
+                {myReferrerCompanyIds.includes(c.id) ? " (opted in)" : ""}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         {verifiedSet.size === 0 && (
           <p className="text-xs text-muted-foreground">Verify a work email on your profile to unlock referrer opt-in.</p>
         )}

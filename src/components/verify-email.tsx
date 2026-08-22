@@ -6,6 +6,13 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { ShieldCheck, MailCheck, Loader2, Copy, Check } from "lucide-react";
 
 export function VerifyEmail({
@@ -72,20 +79,20 @@ export function VerifyEmail({
       </CardHeader>
       <CardContent className="space-y-3">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <select
-            value={companyId}
-            onChange={(e) => setCompanyId(e.target.value)}
-            className="h-9 rounded-md border bg-transparent px-3 text-sm"
-            aria-label="Company"
-          >
-            <option value="">Select company</option>
-            {companies.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-                {verifiedCompanyIds.includes(c.id) ? " ✓" : ""}
-              </option>
-            ))}
-          </select>
+          <Select value={companyId} onValueChange={setCompanyId}>
+            <SelectTrigger className="h-9 w-full gap-1 rounded-md px-3 text-sm" aria-label="Company">
+              <SelectValue placeholder="Select company" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">Select company</SelectItem>
+              {companies.map((c) => (
+                <SelectItem key={c.id} value={c.id}>
+                  {c.name}
+                  {verifiedCompanyIds.includes(c.id) ? " ✓" : ""}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Input
             type="email"
             value={email}

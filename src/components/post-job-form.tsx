@@ -8,6 +8,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { postJobListing } from "@/lib/actions";
 import { Loader2, ShieldCheck, ShieldQuestion, ShieldAlert } from "lucide-react";
 import Link from "next/link";
@@ -122,19 +129,19 @@ export function PostJobForm({
 
           <div className="space-y-1.5">
             <Label>Company</Label>
-            <select
-              value={companyId}
-              onChange={(e) => setCompanyId(e.target.value)}
-              className="h-9 w-full rounded-md border bg-transparent px-3 text-sm"
-              aria-label="Company"
-            >
-              <option value="">New company…</option>
-              {companies.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
+            <Select value={companyId} onValueChange={setCompanyId}>
+              <SelectTrigger className="h-9 w-full gap-1 rounded-md px-3 text-sm" aria-label="Company">
+                <SelectValue placeholder="New company…" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">New company…</SelectItem>
+                {companies.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             {!companyId && (
               <Input
                 className="mt-2"

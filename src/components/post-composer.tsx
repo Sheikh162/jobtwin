@@ -5,6 +5,13 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { createPost } from "@/lib/actions";
 import { Send, Loader2, ShieldCheck } from "lucide-react";
 
@@ -50,22 +57,22 @@ export function PostComposer({ companies }: { companies: { id: string; name: str
             maxLength={4000}
           />
           <div className="flex flex-wrap items-center gap-2">
-            <select
-              value={companyId}
-              onChange={(e) => setCompanyId(e.target.value)}
-              className="h-9 rounded-md border bg-transparent px-3 text-sm"
-              aria-label="Company"
-            >
-              <option value="">Any company</option>
-              {companies.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </select>
+            <Select value={companyId} onValueChange={setCompanyId}>
+              <SelectTrigger className="h-9 w-auto gap-1 rounded-md px-3 text-sm" aria-label="Company">
+                <SelectValue placeholder="Any company" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">Any company</SelectItem>
+                {companies.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <input
               value={role}
               onChange={(e) => setRole(e.target.value)}
               placeholder="Role, e.g. frontend engineer"
-              className="h-9 flex-1 rounded-md border bg-transparent px-3 text-sm min-w-32"
+              className="h-9 flex-1 rounded-md border bg-background px-3 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 min-w-32"
             />
             <Button type="submit" disabled={loading || body.trim().length < 5} className="ml-auto gap-2">
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
