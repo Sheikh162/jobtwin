@@ -86,7 +86,7 @@ extension/         WebExtension (Manifest V3) Greenhouse/Lever autofill, builds 
 
 ### Architecture diagram
 
-A Mermaid architecture diagram of the current system lives at [`docs/architecture.mmd`](docs/architecture.mmd) — it maps the client pages, server actions, the agent worker, the data layer, and external sources (careers pages, Telegram, OpenRouter, GitHub OAuth). Render it with any Mermaid viewer (GitHub renders `.mmd` natively, or `npx @mermaid-js/mermaid-cli -i docs/architecture.mmd -o architecture.png`).
+A Mermaid architecture diagram of the current system lives at [`docs/architecture.md`](docs/architecture.md) — it maps the client pages, server actions, the agent worker, the data layer, and external sources (careers pages, Telegram, OpenRouter, GitHub OAuth). GitHub renders the embedded Mermaid diagram natively, or render it with `npx @mermaid-js/mermaid-cli -i docs/architecture.md -o architecture.png`.
 
 ## Env vars
 
