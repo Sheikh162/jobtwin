@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { scoreListing } from "@/agent/matcher";
+import { scoreListing, curatedMatchCheck } from "@/agent/matcher";
 
 const baseCriteria = {
   keywords: ["backend", "typescript", "fullstack"],
@@ -60,5 +60,42 @@ describe("scoreListing", () => {
     );
     expect(result.score).toBe(0);
     expect(result.matchedKeyword).toBe(false);
+  });
+});
+
+describe("curatedMatchCheck", () => {
+  it("rejects a single loose keyword hit with no location (the weak case)", () => {
+    const result = curatedMatchCheck(
+      { title: "Backend Engineer", location: "Berlin" },
+      baseCriteria
+    );
+    expect(result).toBeNull();
+  });
+
+  it("passes one keyword plus a location match", () => {
+    const result = curatedMatchCheck(
+      { title: "Backend Engineer", location: "San Francisco" },
+      baseCriteria
+    );
+    expect(result).not.toBeNull();
+    expect(result?.score).toBeGreaterThanOrEqual(25);
+  });
+
+  it("passes two keyword hits even without location", () => {
+    const result = curatedMatchCheck(
+      { title: "Senior Backend Product Engineer, TypeScript", location: "Berlin" },
+      baseCriteria
+    );
+    expect(result).not.toBeNull();
+  });
+
+  it("respects a higher score floor", () => {
+    const result = curatedMatchCheck(
+      { title: "Backend Product Engineer, TypeScript", location: "Kenya" },
+      baseCriteria,
+      { scoreFloor: 40 }
+    );
+    // 2 keyword hits (20) below a 40 floor => rejected, even though 2+ keywords.
+    expect(result).toBeNull();
   });
 });

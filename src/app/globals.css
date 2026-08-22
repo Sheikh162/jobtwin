@@ -74,6 +74,7 @@
 }
 
 :root {
+  color-scheme: light;
   --background: oklch(0.9900 0 0);
   --foreground: oklch(0 0 0);
   --card: oklch(1 0 0);
@@ -129,6 +130,7 @@
 }
 
 .dark {
+  color-scheme: dark;
   --background: oklch(0 0 0);
   --foreground: oklch(1 0 0);
   --card: oklch(0.1400 0 0);
@@ -192,5 +194,16 @@
   }
   html {
     @apply font-sans;
+  }
+  /* Native controls must follow the active theme — without this, browser
+     popups (e.g. the <select> dropdown list) render in the OS default scheme,
+     which is white-on-white in dark mode and unreadable. */
+  select,
+  input,
+  textarea {
+    color-scheme: inherit;
+  }
+  select {
+    @apply bg-background text-foreground;
   }
 }

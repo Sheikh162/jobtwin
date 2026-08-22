@@ -55,6 +55,35 @@ export function scoreListing(
   return { score, reasons, matchedKeyword, locationMatched };
 }
 
+/**
+ * Curation gate — the product's promise is a pre-vetted, bounded queue, so a
+ * weak match must not sneak in. Pure + testable.
+ *
+ * Passes only when the listing carries real signal:
+ *  - at least TWO keyword hits, OR
+ *  - one keyword hit AND a location/remote match
+ * AND clears the score floor (default 20; a single 10pt keyword hit alone is
+ * never enough).
+ *
+ * Returns the reasons string array (needed downstream) or null if rejected.
+ */
+export function curatedMatchCheck(
+  listing: { title: string; location?: string | null; description?: string | null },
+  criteria: { keywords: string[]; locations: string[]; remoteOnly: boolean },
+  options?: { scoreFloor?: number }
+): { score: number; reasons: string[] } | null {
+  const { score, reasons, matchedKeyword, locationMatched } = scoreListing(listing, criteria);
+  const keywordHitCount = reasons.filter((r) => r.startsWith("matches keyword")).length;
+  const floor = options?.scoreFloor ?? 20;
+
+  const passes =
+    matchedKeyword &&
+    score >= floor &&
+    (locationMatched || keywordHitCount >= 2);
+
+  return passes ? { score, reasons } : null;
+}
+
 async function draftReason(
   listing: { title: string; companyName: string; location?: string | null },
   criteriaName: string
@@ -105,12 +134,9 @@ export async function runMatchingEngine() {
     for (const listing of listings) {
       if (existingIds.has(listing.id)) continue;
 
-      const { score, reasons, matchedKeyword, locationMatched } = scoreListing(listing, criteria);
-      // Keep the queue curated: a single loose keyword hit isn't enough. Require
-      // at least one keyword and (a location/remote match OR >= 2 keyword hits).
-      const keywordHitCount = reasons.filter((r) => r.startsWith("matches keyword")).length;
-      const pass = matchedKeyword && (locationMatched || keywordHitCount >= 2);
-      if (!pass) continue;
+      const curated = curatedMatchCheck(listing, criteria);
+      if (!curated) continue;
+      const { score, reasons } = curated;
 
       const rationale = await draftReason(
         {
