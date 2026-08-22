@@ -40,9 +40,15 @@ const EXTRACTION_SCHEMA_DESCRIPTION = `{
  *  3. Otherwise, render with Playwright and LLM-extract from the page text
  *     (handles bespoke JS-heavy boards like Ramp's custom app).
  */
-export async function fetchAndExtractListings(companyName: string, careersUrl: string): Promise<ListingCandidate[]> {
+export async function fetchAndExtractListings(companyName: string, careersUrl: string): Promise<ListingCandidate[] | null> {
   const html = await fetchPageHtml(careersUrl);
-  if (!html) return [];
+  if (!html) {
+    // The page could not be fetched at all (network error / non-200). This is
+    // NOT evidence that the company has no jobs — callers must not treat it as
+    // a close signal. We return null to distinguish "failed" from "empty".
+    console.warn(`[crawl] ${companyName} — page fetch failed, not treating as empty`);
+    return null;
+  }
 
   const ats = detectAtsFromHtml(html);
   if (ats.ats) {
@@ -51,6 +57,10 @@ export async function fetchAndExtractListings(companyName: string, careersUrl: s
     if (listings && listings.length > 0) {
       return listings;
     }
+    // Board reached but returned nothing — do NOT fall through to the browser
+    // fallback for ATS pages (the ATS path either works or it doesn't; an
+    // empty ATS result usually means the board token is valid but empty).
+    if (listings !== null) return listings;
   }
 
   // Fallback: render with a browser and let the LLM pull listings out.
@@ -109,7 +119,8 @@ async function llmExtractFromPage(companyName: string, careersUrl: string): Prom
     const result = await llmStructured(ExtractionSchema, {
       system: EXTRACTION_SYSTEM,
       user: userPrompt,
-      model: llmEnvExtractionModel(),
+      // No explicit model: llmStructured resolves the active provider's model
+      // (DEEPSEEK_MODEL / OPENROUTER_MODEL) via llmEnv.
       maxTokens: 4000,
       schemaDescription: EXTRACTION_SCHEMA_DESCRIPTION,
     });
@@ -118,8 +129,4 @@ async function llmExtractFromPage(companyName: string, careersUrl: string): Prom
   } finally {
     await browser.close();
   }
-}
-
-function llmEnvExtractionModel() {
-  return process.env.LLM_EXTRACTION_MODEL ?? process.env.OPENROUTER_MODEL ?? "deepseek/deepseek-v4-flash-0731";
 }

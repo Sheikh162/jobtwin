@@ -1,18 +1,34 @@
 import OpenAI from "openai";
 import { z } from "zod";
 
+type Provider = "deepseek" | "openrouter";
+
+function activeProvider(): Provider {
+  const p = (process.env.LLM_PROVIDER ?? "deepseek").toLowerCase();
+  return p === "openrouter" ? "openrouter" : "deepseek";
+}
+
 export const llmEnv = {
   get baseURL() {
-    return process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1";
+    if (activeProvider() === "openrouter") {
+      return process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1";
+    }
+    // DeepSeek direct API (OpenAI-compatible). The SDK appends /chat/completions.
+    return process.env.DEEPSEEK_BASE_URL ?? "https://api.deepseek.com";
   },
   get apiKey() {
-    if (!process.env.OPENROUTER_API_KEY) {
-      throw new Error("OPENROUTER_API_KEY is not set");
+    if (activeProvider() === "openrouter") {
+      if (!process.env.OPENROUTER_API_KEY) throw new Error("OPENROUTER_API_KEY is not set");
+      return process.env.OPENROUTER_API_KEY;
     }
-    return process.env.OPENROUTER_API_KEY;
+    if (!process.env.DEEPSEEK_API_KEY) throw new Error("DEEPSEEK_API_KEY is not set");
+    return process.env.DEEPSEEK_API_KEY;
   },
   get model() {
-    return process.env.OPENROUTER_MODEL ?? "deepseek/deepseek-v4-flash-0731";
+    if (activeProvider() === "openrouter") {
+      return process.env.OPENROUTER_MODEL ?? "deepseek/deepseek-v4-flash-0731";
+    }
+    return process.env.DEEPSEEK_MODEL ?? "deepseek-chat";
   },
   get extractionModel() {
     return process.env.LLM_EXTRACTION_MODEL ?? this.model;
@@ -23,7 +39,7 @@ function client() {
   return new OpenAI({
     baseURL: llmEnv.baseURL,
     apiKey: llmEnv.apiKey,
-    // The network path to OpenRouter from this dev machine is flaky; let the
+    // Some provider paths are flaky from this dev machine; let the
     // SDK absorb transient connection errors with its own retry + backoff.
     timeout: 120_000,
     maxRetries: 3,

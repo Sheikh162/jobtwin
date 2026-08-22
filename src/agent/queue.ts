@@ -15,6 +15,13 @@ export async function scheduleCrawlJobs(companyIds: string[]) {
     companyIds.map((companyId) => ({
       name: "crawl-company",
       data: { companyId },
+      // Transient network failures must not silently lose a crawl — retry with
+      // exponential-ish backoff before giving up (BullMQ built-in backoff).
+      opts: {
+        attempts: 3,
+        backoff: { type: "exponential", delay: 10_000 },
+        removeOnComplete: 100,
+      },
     }))
   );
 }

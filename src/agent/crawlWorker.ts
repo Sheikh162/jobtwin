@@ -3,6 +3,7 @@ import { connection } from "@/agent/queue";
 import { fetchAndExtractListings } from "@/agent/crawler";
 import { prisma } from "@/lib/prisma";
 import { ListingSource, ListingStatus } from "@/generated/prisma/enums";
+import { runCrawlCycle } from "@/agent/cycle";
 
 async function crawlCompany(job: Job) {
   const { companyId } = job.data as { companyId: string };
@@ -16,6 +17,13 @@ async function crawlCompany(job: Job) {
 
   console.log(`[crawl] ${company.name} — crawling ${company.careersPageUrl}`);
   const fresh = await fetchAndExtractListings(company.name, company.careersPageUrl);
+
+  // A null result means the page/ATS fetch failed (network error), NOT that the
+  // company has no jobs. Closing everything on a transient blip would wipe the
+  // catalog, so skip the close-diff and let BullMQ retry via backoff.
+  if (fresh === null) {
+    throw new Error(`fetch failed for ${company.name} — will retry, listings untouched`);
+  }
 
   const previous = await prisma.listing.findMany({
     where: { companyId, status: ListingStatus.OPEN },
@@ -88,6 +96,8 @@ export function startCrawlWorker() {
       switch (job.name) {
         case "crawl-company":
           return crawlCompany(job);
+        case "crawl-cycle":
+          return runCrawlCycle();
         default:
           throw new Error(`Unknown crawl job: ${job.name}`);
       }
