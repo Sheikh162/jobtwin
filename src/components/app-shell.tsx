@@ -1,10 +1,11 @@
 import Link from "next/link";
-import { Layers, User, Home, Files, Handshake } from "lucide-react";
+import { Layers, User, Home, Files, Handshake, Bot } from "lucide-react";
 import { auth } from "@/auth";
 
 const tabs = [
   { href: "/", label: "Queue", icon: Layers },
   { href: "/applications", label: "Apps", icon: Files },
+  { href: "/agent", label: "Agent", icon: Bot },
   { href: "/referrals", label: "Referrals", icon: Handshake },
   { href: "/profile", label: "Profile", icon: User },
 ];
