@@ -1,4 +1,4 @@
-import type { ListingCandidate } from "@/agent/crawler";
+import type { ListingCandidate } from "@/agent/ats";
 
 export interface DiffResult {
   foundListings: ListingCandidate[];
