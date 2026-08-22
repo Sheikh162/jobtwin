@@ -1,0 +1,11 @@
+{
+  "name": "Jobtwin — Job search with a twin",
+  "short_name": "Jobtwin",
+  "description": "Your digital twin watches career pages, fills forms, and drafts outreach. You keep the decisions.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#fafafa",
+  "theme_color": "#fafafa",
+  "lang": "en",
+  "icons": []
+}

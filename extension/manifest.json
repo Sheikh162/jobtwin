@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "Jobtwin Autofill",
+  "version": "0.1.0",
+  "description": "Fill saved profile data into job application forms on Greenhouse and Lever — the password-manager mental model.",
+  "permissions": ["storage", "activeTab"],
+  "host_permissions": [
+    "https://boards.greenhouse.io/*",
+    "https://*.greenhouse.io/*",
+    "https://jobs.lever.co/*",
+    "https://*.lever.co/*"
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_title": "Jobtwin Autofill",
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "src/background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://boards.greenhouse.io/*",
+        "https://job-boards.greenhouse.io/*",
+        "https://jobs.lever.co/*"
+      ],
+      "js": ["src/content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

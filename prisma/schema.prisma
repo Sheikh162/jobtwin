@@ -1,0 +1,363 @@
+generator client {
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  runtime             = "nodejs"
+  moduleFormat        = "esm"
+  generatedFileExtension = "ts"
+  importFileExtension = "ts"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum ListingSource {
+  SOURCED                   // crawled from careers page by the agent
+  EMPLOYEE_POSTED           // posted by a domain-verified employee
+  EMPLOYER_SUBMITTED_VERIFIED   // self-reported, agent confirmed company presence
+  EMPLOYER_SUBMITTED_UNVERIFIED // self-reported, unverified
+}
+
+enum ListingStatus {
+  OPEN
+  CLOSED
+}
+
+enum MatchStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  APPLIED
+  EXPIRED
+}
+
+enum ApplicationStatus {
+  APPLIED
+  SCREENED
+  INTERVIEW
+  OUTCOME
+}
+
+enum ReferralStatus {
+  DRAFTED
+  SENT
+  RESPONDED
+  INTERVIEW
+  OUTCOME
+  STALE
+}
+
+enum PostSource {
+  NATIVE
+  REDDIT
+  DISCORD
+}
+
+enum VerificationTier {
+  UNVERIFIED
+  PRESENCE_CONFIRMED
+  DOMAIN_VERIFIED
+}
+
+enum NotificationChannelType {
+  TELEGRAM
+  EMAIL
+  WHATSAPP
+}
+
+enum CompanyVerificationStatus {
+  UNVERIFIED
+  PRESENCE_CONFIRMED
+  DOMAIN_VERIFIED
+}
+
+// ---------------------------------------------------------------------------
+// Auth.js models (required by @auth/prisma-adapter)
+// ---------------------------------------------------------------------------
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  role          String    @default("USER")
+
+  // Resume-parsed structured profile (JSONB — flexible shape)
+  resumeParsed    Json?
+  resumeFileName  String?
+  githubUsername  String?
+  githubConnected DateTime?
+  telegramName    String?
+
+  savedCriteria  SearchCriteria[]
+  matches        Match[]
+  applications   Application[]
+  referralSent   Referral[]   @relation("Referrer")
+  referralGot    Referral[]   @relation("Candidate")
+  posts          CommunityPost[]
+  reports        InterviewReport[]
+  channels       NotificationChannel[]
+
+  accounts Account[]
+  sessions Session[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ---------------------------------------------------------------------------
+// Companies & Listings
+// ---------------------------------------------------------------------------
+
+model Company {
+  id                 String   @id @default(cuid())
+  name               String
+  slug               String   @unique
+  domain             String?
+  careersPageUrl     String?
+  logoUrl            String?
+  verificationStatus CompanyVerificationStatus @default(UNVERIFIED)
+  note               String?
+
+  listings     Listing[]
+  posts        CommunityPost[]
+  reports      InterviewReport[]
+  stats        TransparencyStats[]
+  seedActive   Boolean  @default(false)
+  lastCrawlAt  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Listing {
+  id          String   @id @default(cuid())
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  // externalId is unique per company so diffing against crawls is stable
+  externalId   String
+  title        String
+  location     String?
+  applyUrl     String?
+  postedAt     DateTime?
+  description  String?  @db.Text
+  source       ListingSource @default(SOURCED)
+  status       ListingStatus @default(OPEN)
+
+  firstSeenAt DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+
+  matches      Match[]
+  applications Application[]
+  referrals    Referral[]
+  posts        CommunityPost[]
+
+  @@unique([companyId, externalId])
+  @@index([source, status])
+  @@index([firstSeenAt])
+}
+
+// ---------------------------------------------------------------------------
+// Matching
+// ---------------------------------------------------------------------------
+
+model SearchCriteria {
+  id        String  @id @default(cuid())
+  userId    String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String  @default("My criteria")
+  keywords  String[]
+  locations String[]
+  remoteOnly Boolean @default(false)
+  minSalary Int?
+  active    Boolean @default(true)
+
+  matches Match[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Match {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  listingId   String
+  listing     Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  criteriaId  String?
+  criteria    SearchCriteria? @relation(fields: [criteriaId], references: [id], onDelete: SetNull)
+
+  score       Float
+  reasons     Json?    // LLM match reasoning
+  status      MatchStatus @default(PENDING)
+
+  createdAt DateTime @default(now())
+  decidedAt DateTime?
+  notifiedAt DateTime?
+
+  @@unique([userId, listingId])
+  @@index([userId, status])
+  @@index([listingId])
+}
+
+// ---------------------------------------------------------------------------
+// Applications & Referrals
+// ---------------------------------------------------------------------------
+
+model Application {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  listingId String
+  listing   Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  status       ApplicationStatus @default(APPLIED)
+  timeline     Json?   // [{status, at}] — applied -> screened -> interview -> outcome
+  companyReply Json?   // outcome metadata (offer/rejection, notes)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([listingId])
+  @@index([status])
+}
+
+model Referral {
+  id            String   @id @default(cuid())
+  listingId     String
+  listing       Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  referrerId    String
+  referrer      User     @relation("Referrer", fields: [referrerId], references: [id], onDelete: Cascade)
+  candidateId   String
+  candidate     User     @relation("Candidate", fields: [candidateId], references: [id], onDelete: Cascade)
+
+  status       ReferralStatus @default(DRAFTED)
+  askDraft     String?  @db.Text  // agent-drafted referral ask, candidate approves & sends
+  timeline     Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([candidateId])
+  @@index([referrerId])
+}
+
+// ---------------------------------------------------------------------------
+// Community
+// ---------------------------------------------------------------------------
+
+model CommunityPost {
+  id           String   @id @default(cuid())
+  authorId     String?
+  author       User?    @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  pseudonym    String   // pseudonymous author name
+  companyId    String?
+  company      Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  listingId    String?
+  listing      Listing? @relation(fields: [listingId], references: [id], onDelete: SetNull)
+  role         String?
+  body         String   @db.Text
+  source       PostSource @default(NATIVE)
+  tier         VerificationTier @default(UNVERIFIED)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId])
+  @@index([tier])
+}
+
+model InterviewReport {
+  id        String   @id @default(cuid())
+  authorId  String?
+  author    User?    @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  pseudonym String
+  companyId String?
+  company   Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  role      String?
+  rounds    Json?    // [{name, themes[], outcome}] structured, not free text
+  themes    String[]
+  outcome   String?
+  tier      VerificationTier @default(UNVERIFIED)
+
+  createdAt DateTime @default(now())
+
+  @@index([companyId])
+}
+
+// ---------------------------------------------------------------------------
+// Transparency stats (computed from Application data)
+// ---------------------------------------------------------------------------
+
+model TransparencyStats {
+  id          String @id @default(cuid())
+  companyId   String
+  company     Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  role        String?
+
+  responseRate      Float?
+  avgTimeToResponse Int?   // days
+  ghostingRate      Float?
+  sampleSize        Int    @default(0)
+
+  updatedAt DateTime @updatedAt
+
+  @@unique([companyId, role])
+}
+
+// ---------------------------------------------------------------------------
+// Notifications (pluggable)
+// ---------------------------------------------------------------------------
+
+model NotificationChannel {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type       NotificationChannelType @default(TELEGRAM)
+  externalId String   // telegram chatId / email / phone
+  enabled    Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([userId, type, externalId])
+}
