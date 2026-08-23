@@ -87,7 +87,12 @@ export function CriteriaForm({
         <CardContent className="space-y-5">
           <div className="space-y-1.5">
             <Label htmlFor="name">Name</Label>
-            <Input id="name" value={name} onChange={(e) => setName(e.target.value)} />
+            <Input
+              id="name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && e.preventDefault()}
+            />
           </div>
 
           <div className="space-y-1.5">
@@ -130,7 +135,7 @@ export function CriteriaForm({
                 <Plus className="h-4 w-4" />
               </Button>
             </div>
-            {locations.length > 0 && locations.includes("Remote") === false && (
+            {locations.length > 0 && (
               <div className="flex flex-wrap gap-1.5 pt-2">
                 {locations.map((l) => (
                   <span key={l} className="inline-flex items-center gap-1.5 rounded-full border bg-secondary/40 px-2.5 py-1 text-xs">
@@ -164,6 +169,7 @@ export function CriteriaForm({
               placeholder="120000"
               value={minSalary}
               onChange={(e) => setMinSalary(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && e.preventDefault()}
             />
           </div>
         </CardContent>
