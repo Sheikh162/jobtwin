@@ -138,6 +138,19 @@ describe("curatedMatchCheck", () => {
     expect(result).toBeNull();
   });
 
+  it("rejects a San Francisco-located role when India is the saved location", () => {
+    const indiaCriteria = {
+      keywords: ["backend", "typescript", "fullstack"],
+      locations: ["India", "mumbai", "bengaluru"],
+      remoteOnly: false,
+    };
+    const result = curatedMatchCheck(
+      { title: "Backend Engineer", location: "San Francisco, CA • New York, NY • United States" },
+      indiaCriteria
+    );
+    expect(result).toBeNull();
+  });
+
   it("respects a higher score floor", () => {
     const result = curatedMatchCheck(
       { title: "Backend Product Engineer, TypeScript", location: "Kenya" },

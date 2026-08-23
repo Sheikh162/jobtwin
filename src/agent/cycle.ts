@@ -1,6 +1,7 @@
 import { scheduleCrawlJobs, queues } from "@/agent/queue";
 import { runMatchingEngine } from "@/agent/matcher";
 import { expireStaleMatches } from "@/agent/staleness";
+import { revalidatePendingMatches } from "@/agent/revalidate";
 import { prisma } from "@/lib/prisma";
 
 let cycleRunning = false;
@@ -51,6 +52,11 @@ export async function runCrawlCycle() {
     // Keep the queue actually bounded: expire closed-listing matches and
     // matches that aged out without a decision.
     await expireStaleMatches();
+
+    // Keep the queue conformed to the user's CURRENT criteria — hard-delete
+    // matches that no longer clear the curation gate (e.g. after a criteria
+    // edit drops a location).
+    await revalidatePendingMatches();
   } catch (err) {
     console.error("[scheduler] cycle failed:", err);
   } finally {
