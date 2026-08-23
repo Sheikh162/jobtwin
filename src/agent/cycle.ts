@@ -53,9 +53,9 @@ export async function runCrawlCycle() {
     // matches that aged out without a decision.
     await expireStaleMatches();
 
-    // Keep the queue conformed to the user's CURRENT criteria — hard-delete
-    // matches that no longer clear the curation gate (e.g. after a criteria
-    // edit drops a location).
+    // Keep the queue conformed to the user's CURRENT criteria — expire matches
+    // that no longer clear the curation gate (e.g. after a criteria edit drops
+    // a location). Expired, not deleted: recoverable + preserves audit trail.
     await revalidatePendingMatches();
   } catch (err) {
     console.error("[scheduler] cycle failed:", err);
