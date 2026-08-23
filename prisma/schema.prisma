@@ -212,10 +212,16 @@ model SearchCriteria {
   user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   name      String  @default("My criteria")
   keywords  String[]
+  // Hard-reject terms: a listing matching any of these never enters the queue
+  // (e.g. "junior", "associate", "contract").
+  excludeKeywords String[] @default([])
   locations String[]
   remoteOnly Boolean @default(false)
   minSalary Int?
   active    Boolean @default(true)
+
+  // One-level undo: snapshot of the criteria row before the last agent mutation.
+  previousState Json?
 
   matches Match[]
   createdAt DateTime @default(now())

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { scoreListing, curatedMatchCheck } from "@/agent/matcher";
+import { scoreListing, curatedMatchCheck, matchesExcluded } from "@/agent/matcher";
 
 const baseCriteria = {
   keywords: ["backend", "typescript", "fullstack"],
@@ -159,5 +159,38 @@ describe("curatedMatchCheck", () => {
     );
     // 2 keyword hits (20) below a 40 floor => rejected, even though 2+ keywords.
     expect(result).toBeNull();
+  });
+});
+
+describe("matchesExcluded", () => {
+  const listing = { title: "Junior Backend Engineer", location: "Remote", description: "associate-level contract role" };
+
+  it("returns true when an excluded term is in the title", () => {
+    expect(matchesExcluded(listing, ["junior"])).toBe(true);
+  });
+
+  it("returns true when an excluded term is in the description", () => {
+    expect(matchesExcluded(listing, ["contract"])).toBe(true);
+  });
+
+  it("returns false when nothing is excluded", () => {
+    expect(matchesExcluded(listing, [])).toBe(false);
+    expect(matchesExcluded(listing, ["senior"])).toBe(false);
+  });
+
+  it("curatedMatchCheck hard-rejects an excluded listing even with strong keyword+location", () => {
+    const result = curatedMatchCheck(
+      { title: "Junior Backend Engineer", location: "San Francisco" },
+      { ...baseCriteria, excludeKeywords: ["junior", "associate", "intern", "graduate"] }
+    );
+    expect(result).toBeNull();
+  });
+
+  it("curatedMatchCheck passes the same listing when it is not excluded", () => {
+    const result = curatedMatchCheck(
+      { title: "Senior Backend Engineer", location: "San Francisco" },
+      { ...baseCriteria, excludeKeywords: ["junior", "associate", "intern", "graduate"] }
+    );
+    expect(result).not.toBeNull();
   });
 });

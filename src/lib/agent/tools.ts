@@ -1,7 +1,10 @@
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { MatchStatus } from "@/generated/prisma/enums";
+import { Prisma } from "@/generated/prisma/client";
 import { getQueueStats } from "@/lib/queue";
+import { revalidatePendingMatches } from "@/agent/revalidate";
+import { runMatchingEngine } from "@/agent/matcher";
 
 // ---------------------------------------------------------------------------
 // Tool invocation contract. Each tool is described to the LLM (for tool
@@ -12,6 +15,7 @@ export interface AgentToolResult {
   tool: string;
   summary: string; // one-line what it did, shown as a badge in the UI
   data: unknown; // structured data fed back to the LLM
+  changed?: boolean; // true when the tool mutated the user's state (criteria etc.)
 }
 
 const ToolSelectionSchema = z.object({
@@ -209,6 +213,178 @@ async function checkCompany(userId: string, args: ToolArg): Promise<AgentToolRes
 }
 
 // ---------------------------------------------------------------------------
+// Criteria mutation tools — the "direct the agent" surface. The agent can
+// change what it hunts for and the queue re-conforms immediately.
+// ---------------------------------------------------------------------------
+
+const CriteriaFieldOpSchema = z.object({
+  op: z.enum(["add", "remove", "set"]),
+  values: z.array(z.string()).default([]),
+});
+
+type CriteriaFieldOp = z.infer<typeof CriteriaFieldOpSchema>;
+
+async function applyFieldOp(current: string[], op: CriteriaFieldOp): Promise<string[]> {
+  const values = op.values.map((v) => v.trim()).filter(Boolean);
+  switch (op.op) {
+    case "add":
+      return [...new Set([...current, ...values])];
+    case "remove":
+      return current.filter((c) => !values.includes(c));
+    case "set":
+      return [...new Set(values)];
+  }
+}
+
+/** Normalize criteria rows for snapshotting/restoring (strip the undo field). */
+function snapshotOf(c: {
+  name: string;
+  keywords: string[];
+  excludeKeywords: string[];
+  locations: string[];
+  remoteOnly: boolean;
+  minSalary: number | null;
+  active: boolean;
+}) {
+  return {
+    name: c.name,
+    keywords: c.keywords,
+    excludeKeywords: c.excludeKeywords,
+    locations: c.locations,
+    remoteOnly: c.remoteOnly,
+    minSalary: c.minSalary,
+    active: c.active,
+  };
+}
+
+/** Re-conform the queue after a criteria change (revalidate + match new). */
+async function reconformQueue(userId: string) {
+  await revalidatePendingMatches(userId);
+  await runMatchingEngine();
+  return getQueueStats(userId);
+}
+
+async function updateCriteria(userId: string, args: ToolArg): Promise<AgentToolResult> {
+  let criteria = await prisma.searchCriteria.findFirst({ where: { userId } });
+  if (!criteria) {
+    criteria = await prisma.searchCriteria.create({
+      data: { userId, name: "My criteria" },
+    });
+  }
+
+  const ops = args as {
+    name?: string;
+    keywords?: { op: string; values?: string[] };
+    excludeKeywords?: { op: string; values?: string[] };
+    locations?: { op: string; values?: string[] };
+    remoteOnly?: boolean;
+    minSalary?: number | null;
+  };
+
+  const parseOp = (raw: { op: string; values?: string[] } | undefined) => {
+    if (!raw) return undefined;
+    const parsed = CriteriaFieldOpSchema.safeParse(raw);
+    return parsed.success ? parsed.data : undefined;
+  };
+
+  const before = snapshotOf(criteria);
+
+  const keywordsOp = parseOp(ops.keywords);
+  const excludeOp = parseOp(ops.excludeKeywords);
+  const locationsOp = parseOp(ops.locations);
+
+  const keywords = keywordsOp ? await applyFieldOp(criteria.keywords ?? [], keywordsOp) : (criteria.keywords ?? []);
+  const excludeKeywords = excludeOp
+    ? await applyFieldOp(criteria.excludeKeywords ?? [], excludeOp)
+    : (criteria.excludeKeywords ?? []);
+  const locations = locationsOp ? await applyFieldOp(criteria.locations ?? [], locationsOp) : (criteria.locations ?? []);
+  const remoteOnly = ops.remoteOnly !== undefined ? ops.remoteOnly : criteria.remoteOnly;
+  const minSalary = ops.minSalary !== undefined ? ops.minSalary : criteria.minSalary;
+  const name = ops.name ?? criteria.name;
+
+  const updated = await prisma.searchCriteria.update({
+    where: { id: criteria.id },
+    data: {
+      name,
+      keywords,
+      excludeKeywords,
+      locations,
+      remoteOnly,
+      minSalary,
+      previousState: JSON.parse(JSON.stringify(before)),
+    },
+  });
+
+  const queueAfter = await reconformQueue(userId);
+
+  return {
+    tool: "update_criteria",
+    changed: true,
+    summary: `Criteria updated: ${name}`,
+    data: {
+      before,
+      after: snapshotOf(updated),
+      queueAfter,
+      note: "Queue re-conformed to the new criteria.",
+    },
+  };
+}
+
+async function restoreCriteria(userId: string): Promise<AgentToolResult> {
+  const criteria = await prisma.searchCriteria.findFirst({ where: { userId } });
+  if (!criteria?.previousState) {
+    return {
+      tool: "restore_criteria",
+      summary: "Nothing to restore",
+      data: { error: "No previous criteria state to restore" },
+    };
+  }
+
+  const prev = criteria.previousState as Record<string, unknown>;
+  const updated = await prisma.searchCriteria.update({
+    where: { id: criteria.id },
+    data: {
+      name: String(prev.name ?? criteria.name),
+      keywords: (prev.keywords as string[]) ?? criteria.keywords,
+      excludeKeywords: (prev.excludeKeywords as string[]) ?? criteria.excludeKeywords,
+      locations: (prev.locations as string[]) ?? criteria.locations,
+      remoteOnly: Boolean(prev.remoteOnly ?? criteria.remoteOnly),
+      minSalary: (prev.minSalary as number | null) ?? criteria.minSalary,
+      active: Boolean(prev.active ?? criteria.active),
+      previousState: Prisma.DbNull,
+    },
+  });
+
+  const queueAfter = await reconformQueue(userId);
+
+  return {
+    tool: "restore_criteria",
+    changed: true,
+    summary: "Criteria restored to previous state",
+    data: { after: snapshotOf(updated), queueAfter },
+  };
+}
+
+async function setMatchingActive(userId: string, args: ToolArg): Promise<AgentToolResult> {
+  const active = args.active !== false;
+  const criteria = await prisma.searchCriteria.findFirst({ where: { userId } });
+  if (!criteria) {
+    return {
+      tool: active ? "resume_matching" : "pause_matching",
+      summary: "No criteria yet",
+      data: { error: "No criteria saved yet." },
+    };
+  }
+  await prisma.searchCriteria.update({ where: { id: criteria.id }, data: { active } });
+  return {
+    tool: active ? "resume_matching" : "pause_matching",
+    changed: true,
+    summary: active ? "Matching resumed" : "Matching paused",
+    data: { active, note: active ? "New matches will appear again." : "No new matches until resumed; existing queue stays." },
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Tool registry
 // ---------------------------------------------------------------------------
 
@@ -222,7 +398,20 @@ export const AGENT_TOOLS = {
   get_application_summary: { handler: applicationSummary, args: z.object({}).describe("No args") },
   check_company: {
     handler: checkCompany,
-    args: z.object({ name: z.string().describe("Company name, e.g. Vercel") }),
+    args: z.object({ name: z.string().describe("Company name, e.g. Stripe or Vercel") }),
+  },
+  update_criteria: {
+    handler: updateCriteria,
+    args: z.object({}).describe("Partial criteria changes with per-field ops"),
+  },
+  restore_criteria: { handler: restoreCriteria, args: z.object({}).describe("No args") },
+  pause_matching: {
+    handler: setMatchingActive,
+    args: z.object({ active: z.literal(false).describe("Pause matching") }),
+  },
+  resume_matching: {
+    handler: setMatchingActive,
+    args: z.object({ active: z.literal(true).describe("Resume matching") }),
   },
 } as const;
 
@@ -232,6 +421,10 @@ export const TOOL_DESCRIPTIONS: Array<{ name: string; description: string }> = [
   { name: "get_criteria", description: "Get the user's saved search criteria." },
   { name: "get_application_summary", description: "Summarize the user's application statuses." },
   { name: "check_company", description: "Kick off a live crawl of a company's careers page to see what jobs it has now." },
+  { name: "update_criteria", description: "CHANGE what the agent hunts for. Per-field ops {op: add|remove|set, values}. Fields: keywords, excludeKeywords (never match these), locations, remoteOnly (boolean), minSalary (number), name. The queue re-conforms immediately." },
+  { name: "restore_criteria", description: "Undo the last criteria change — restore the previous saved criteria." },
+  { name: "pause_matching", description: "Stop producing new matches until resumed (existing queue stays)." },
+  { name: "resume_matching", description: "Resume producing new matches after a pause." },
 ];
 
 export { ToolSelectionSchema };

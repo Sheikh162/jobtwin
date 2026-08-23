@@ -54,8 +54,7 @@ export function locationMatches(
 export function scoreListing(
   listing: { title: string; location?: string | null; description?: string | null },
   criteria: { keywords: string[]; locations: string[]; remoteOnly: boolean }
-): { score: number; reasons: string[]; matchedKeyword: boolean; locationMatched: boolean; isRemote: boolean } {
-  let score = 0;
+): { score: number; reasons: string[]; matchedKeyword: boolean; locationMatched: boolean; isRemote: boolean } {  let score = 0;
   const reasons: string[] = [];
   let matchedKeyword = false;
   let locationMatched = false;
@@ -100,6 +99,23 @@ export function scoreListing(
 }
 
 /**
+ * Does the listing match any exclude term? Hard reject — "stop matching me to
+ * anything under senior level" becomes excludeKeywords=["junior","associate",
+ * "intern","graduate"]; any hit kills the match before scoring.
+ */
+export function matchesExcluded(
+  listing: { title: string; location?: string | null; description?: string | null },
+  excludeKeywords: string[]
+): boolean {
+  if (!excludeKeywords?.length) return false;
+  const haystack = `${listing.title} ${listing.description ?? ""}`.toLowerCase();
+  return excludeKeywords.some((kw) => {
+    const term = kw.trim().toLowerCase();
+    return term.length > 0 && haystack.includes(term);
+  });
+}
+
+/**
  * Curation gate — the product's promise is a pre-vetted, bounded queue, so a
  * weak match must not sneak in. Pure + testable.
  *
@@ -118,9 +134,12 @@ export function scoreListing(
  */
 export function curatedMatchCheck(
   listing: { title: string; location?: string | null; description?: string | null },
-  criteria: { keywords: string[]; locations: string[]; remoteOnly: boolean },
+  criteria: { keywords: string[]; locations: string[]; remoteOnly: boolean; excludeKeywords?: string[] },
   options?: { scoreFloor?: number }
 ): { score: number; reasons: string[] } | null {
+  // Hard reject on excluded terms before any scoring.
+  if (matchesExcluded(listing, criteria.excludeKeywords ?? [])) return null;
+
   const { score, reasons, matchedKeyword, locationMatched, isRemote } = scoreListing(listing, criteria);
   const keywordHitCount = reasons.filter((r) => r.startsWith("matches keyword")).length;
   const floor = options?.scoreFloor ?? 20;

@@ -42,6 +42,7 @@ export async function revalidatePendingMatches(userId?: string): Promise<number>
         },
         {
           keywords: criteria.keywords,
+          excludeKeywords: criteria.excludeKeywords,
           locations: criteria.locations,
           remoteOnly: criteria.remoteOnly,
         }

@@ -3,12 +3,12 @@
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Loader2, Send, Bot, User, Wrench } from "lucide-react";
+import { Loader2, Send, Bot, User, Wrench, CheckCircle2 } from "lucide-react";
 
 interface Message {
   role: "user" | "assistant";
   content: string;
-  toolCalls?: { tool: string; summary: string }[];
+  toolCalls?: { tool: string; summary: string; changed?: boolean }[];
 }
 
 const STARTERS = [
@@ -58,9 +58,10 @@ export function AgentChat({ userId }: { userId: string }) {
         {
           role: "assistant",
           content: data.reply,
-          toolCalls: (data.toolCalls ?? []).map((t: { tool: string; summary: string }) => ({
+          toolCalls: (data.toolCalls ?? []).map((t: { tool: string; summary: string; changed?: boolean }) => ({
             tool: t.tool,
             summary: t.summary,
+            changed: t.changed === true,
           })),
         },
       ]);
@@ -86,9 +87,13 @@ export function AgentChat({ userId }: { userId: string }) {
                     {m.toolCalls.map((t, j) => (
                       <span
                         key={j}
-                        className="inline-flex items-center gap-1 rounded-full border bg-background px-2 py-0.5 text-[0.65rem] text-muted-foreground"
+                        className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[0.65rem] ${
+                          t.changed
+                            ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                            : "bg-background text-muted-foreground"
+                        }`}
                       >
-                        <Wrench className="h-3 w-3" />
+                        {t.changed ? <CheckCircle2 className="h-3 w-3" /> : <Wrench className="h-3 w-3" />}
                         {t.summary}
                       </span>
                     ))}

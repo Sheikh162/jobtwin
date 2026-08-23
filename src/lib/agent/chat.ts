@@ -64,13 +64,30 @@ const TOOL_ARG_HINTS = `{
   "get_match_details": {"args": {"matchId": "<id from the review queue>"}},
   "get_criteria": {"args": {}},
   "get_application_summary": {"args": {}},
-  "check_company": {"args": {"name": "<exact company name, e.g. Stripe or Vercel>"}}
+  "check_company": {"args": {"name": "<exact company name, e.g. Stripe or Vercel>"}},
+  "update_criteria": {"args": {
+    "keywords": {"op": "add|remove|set", "values": ["..."]},
+    "excludeKeywords": {"op": "add|remove|set", "values": ["junior","associate","contract"]},
+    "locations": {"op": "add|remove|set", "values": ["India","Remote"]},
+    "remoteOnly": true,
+    "minSalary": 120000,
+    "name": "My criteria"
+  }},
+  "restore_criteria": {"args": {}},
+  "pause_matching": {"args": {"active": false}},
+  "resume_matching": {"args": {"active": true}}
 }`;
 
 const SELECT_SYSTEM = [
   "Decide whether a tool would help answer the user's latest message.",
   "JSON only. Pick exactly one tool if it helps, or empty string if not (answer directly).",
   "Put the user's mentioned company/name into the args for that tool.",
+  "The user can DIRECT you: 'only remote roles' -> update_criteria locations set [Remote] + remoteOnly true;",
+  "'stop matching under senior' -> update_criteria excludeKeywords set [junior, associate, intern, graduate];",
+  "'add Mumbai' -> update_criteria locations add [Mumbai]; 'undo that' -> restore_criteria;",
+  "'pause' -> pause_matching. When the user asks to change criteria, USE update_criteria.",
+  "ONLY include a field in update_criteria args if the user explicitly mentioned it — never change",
+  "minSalary or other fields unless asked. If in doubt, leave it out.",
 ].join("\n");
 
 const SELECT_SCHEMA = `{
@@ -102,7 +119,7 @@ async function decideTool(
   };
 }
 
-const ANSWER_SYSTEM = (toolContext: string) =>
+const ANSWER_SYSTEM = (toolContext: string, madeChanges: boolean) =>
   [
     ACTIVITY_SYSTEM_PREFIX,
     "",
@@ -110,6 +127,13 @@ const ANSWER_SYSTEM = (toolContext: string) =>
     "- If you used tools, base your answer strictly on the tool results below.",
     "- Always answer the user's question. Tie it back to THEM (their queue, criteria, applications).",
     "- Never mention tool names or raw JSON in the answer.",
+    ...(madeChanges
+      ? [
+          "- You CHANGED the user's criteria. State exactly what changed (before -> after:",
+          "  keywords, excluded terms, locations, remote-only, salary) and what the queue now",
+          "  looks like (how many matches remain). Offer to undo if they want.",
+        ]
+      : []),
     ...(toolContext ? [`\nTool results:\n${toolContext}`] : []),
   ].join("\n");
 
@@ -122,9 +146,10 @@ async function generateAnswer(
     .slice(-10)
     .map((m) => `${m.role === "user" ? "User" : "Agent"}: ${m.content}`)
     .join("\n");
+  const madeChanges = toolCalls.some((t) => t.changed === true);
 
   const answer = await llmText({
-    system: ANSWER_SYSTEM(toolContext),
+    system: ANSWER_SYSTEM(toolContext, madeChanges),
     user: [
       ...(toolCalls.length > 0
         ? [`(Agent used tools; results are in the system context.)`]
